@@ -39,5 +39,42 @@ A minimal, static web app to translate text using one or more Ollama models. Mat
 - `styles.css` — Styling and layout
 - `app.js` — UI logic and API calls
 
+## Desktop Apps (Electron)
+- Location: the Electron project lives in `app/` with its own `package.json`.
+
+### Prerequisites
+- Node.js 18+
+- macOS: Xcode command line tools (`xcode-select --install`)
+- Windows: Visual Studio Build Tools (for electron-builder), PowerShell
+
+### Run in development
+```
+cd app
+npm install
+npm run start
+```
+
+### Build installers
+- Cross‑platform build from each OS:
+  - macOS DMG/APP:
+    - `cd app && npm run build:mac`
+  - Windows NSIS installer:
+    - `cd app && npm run build:win`
+- Generic build alias (uses host platform):
+```
+cd app
+npm run build
+```
+Outputs are placed in `app/dist/`.
+
+### CORS and Ollama
+- The desktop app still makes HTTP requests to the Ollama API. If requests fail due to CORS, allow the app origin in Ollama or relax origins while testing.
+- Example (shell):
+```
+export OLLAMA_ORIGINS=*
+ollama serve
+```
+Alternatively, we can add an Electron main‑process proxy to bypass CORS. Ask if you want this wired.
+
 ## License
 This project is provided as-is for demonstration purposes.
