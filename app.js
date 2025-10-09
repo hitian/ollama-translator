@@ -11,6 +11,7 @@ const els = {
   translateBtn: document.getElementById("translateBtn"),
   text: document.getElementById("sourceText"),
   charCount: document.getElementById("charCount"),
+  clearBtn: document.getElementById("clearInputBtn"),
   results: document.getElementById("results"),
   // settings
   settingsBtn: document.getElementById("settingsBtn"),
@@ -134,9 +135,21 @@ function addResultCardPending(model) {
   const card = document.createElement("article");
   card.className = "result-card";
   card.dataset.model = model;
+  const header = document.createElement("div");
+  header.className = "result-header";
   const title = document.createElement("div");
   title.className = "result-title";
   title.textContent = model;
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "icon-btn tool-btn";
+  copyBtn.title = "Copy result";
+  copyBtn.setAttribute("aria-label", "Copy result");
+  copyBtn.disabled = true; // enable when content arrives
+  copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.7"/><path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.7"/></svg>';
+  actions.appendChild(copyBtn);
+  header.append(title, actions);
   const body = document.createElement("div");
   body.className = "result-body";
   const line = document.createElement("div");
@@ -146,7 +159,7 @@ function addResultCardPending(model) {
   line2.className = "skeleton";
   line2.style.width = "40%";
   body.append(line, document.createElement("br"), line2);
-  card.append(title, body);
+  card.append(header, body);
   els.results.appendChild(card);
   return card;
 }
@@ -154,6 +167,11 @@ function addResultCardPending(model) {
 function updateResultCard(card, text) {
   const body = card.querySelector(".result-body");
   body.textContent = text;
+  const btn = card.querySelector(".result-actions .icon-btn");
+  if (btn) {
+    btn.disabled = !text;
+    btn.onclick = () => copyToClipboard(text, btn);
+  }
 }
 
 async function translateOnce(model, from, to, text) {
@@ -195,6 +213,12 @@ async function performTranslate() {
 els.text.addEventListener("input", updateCharCount);
 updateCharCount();
 
+els.clearBtn.addEventListener("click", () => {
+  els.text.value = "";
+  updateCharCount();
+  els.text.focus();
+});
+
 els.swap.addEventListener("click", swapLanguages);
 
 els.settingsBtn.addEventListener("click", openSettings);
@@ -224,3 +248,28 @@ els.translateBtn.addEventListener("click", performTranslate);
   els.modelCount.textContent = String(getSelectedModels().length);
 })();
 
+// Clipboard helper
+async function copyToClipboard(text, btn) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    if (btn) {
+      const prev = btn.title;
+      btn.title = "Copied!";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.title = prev; btn.classList.remove("copied"); }, 1200);
+    }
+  } catch (e) {
+    alert("Copy failed: " + e.message);
+  }
+}

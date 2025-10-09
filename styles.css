@@ -108,6 +108,8 @@ textarea#sourceText {
   font-size: 12px;
 }
 
+.clear-btn { position: absolute; top: 8px; right: 8px; height: 30px; width: 30px; }
+
 .results { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
 .result-card {
   background: var(--surface);
@@ -115,7 +117,10 @@ textarea#sourceText {
   border-radius: 10px;
   padding: 12px 14px;
 }
-.result-title { font-weight: 600; font-size: 13px; color: #4338ca; margin-bottom: 6px; }
+.result-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.result-title { font-weight: 600; font-size: 13px; color: #4338ca; }
+.result-actions { display: flex; align-items: center; gap: 6px; }
+.tool-btn { height: 28px; width: 28px; min-width: 28px; }
 .result-tools { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 .result-body { white-space: pre-wrap; }
 
@@ -152,4 +157,3 @@ textarea#sourceText {
   .topbar { flex-direction: column; align-items: stretch; gap: 10px; }
   .actions { justify-content: space-between; }
 }
-
