@@ -2,6 +2,9 @@
 
 A minimal, static web app to translate text using one or more Ollama models. Matches the provided UI reference and runs entirely in the browser.
 
+![Screenshot macOS](Screenshot-macOS.png)
+
+
 ## Features
 - Language selection with swap (English, Chinese, Simplified, Japanese, Korean)
 - Settings modal to configure Ollama API base URL
