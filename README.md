@@ -31,7 +31,7 @@ A minimal, static web app to translate text using one or more Ollama models. Mat
 
 ## API Endpoints Used
 - `GET /api/tags` — list available images (models)
-- `POST /api/generate` with `{ model, prompt, stream: false }` — generate translation
+- `POST /api/generate` with `{ model, prompt, stream: true }` — streaming translation (UI updates live)
 
 ## Notes
 - CORS: When opening `index.html` directly via `file://`, browsers typically block requests. Serve the folder as shown above. If needed, configure Ollama origins (version-dependent), e.g. `export OLLAMA_ORIGINS=*` when starting Ollama.

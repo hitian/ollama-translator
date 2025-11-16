@@ -174,17 +174,58 @@ function updateResultCard(card, text) {
   }
 }
 
-async function translateOnce(model, from, to, text) {
+async function translateOnce(model, from, to, text, onPartial) {
   const base = getBaseUrl();
   const prompt = `Translate the following text from ${from} to ${to}. Preserve meaning, lists and punctuation. Return only the translated text.\n\n${text}`;
   const res = await fetch(`${base}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, prompt, stream: false }),
+    // Use streaming responses from Ollama
+    body: JSON.stringify({ model, prompt, stream: true }),
   });
-  if (!res.ok) throw new Error(`Model ${model} failed: HTTP ${res.status}`);
-  const data = await res.json();
-  return data.response || "";
+  if (!res.ok || !res.body) throw new Error(`Model ${model} failed: HTTP ${res.status}`);
+
+  // Parse NDJSON stream, accumulating partial responses
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+        try {
+          const obj = JSON.parse(line);
+          if (obj.response) {
+            fullText += obj.response;
+            if (typeof onPartial === "function") onPartial(fullText);
+          }
+          if (obj.error) {
+            throw new Error(obj.error);
+          }
+          if (obj.done) {
+            // drain any remaining buffered bytes
+            break;
+          }
+        } catch (e) {
+          // If a partial JSON chunk slipped through, prepend back to buffer
+          // and continue reading. Only rethrow non-syntax errors.
+          if (!(e instanceof SyntaxError)) throw e;
+          buffer = line + "\n" + buffer;
+          break;
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+  return fullText;
 }
 
 async function performTranslate() {
@@ -199,7 +240,14 @@ async function performTranslate() {
   for (const model of models) {
     const card = addResultCardPending(model);
     try {
-      const out = await translateOnce(model, els.from.value, els.to.value, text);
+      const out = await translateOnce(
+        model,
+        els.from.value,
+        els.to.value,
+        text,
+        // stream callback to update UI incrementally
+        (partial) => updateResultCard(card, partial)
+      );
       updateResultCard(card, out);
     } catch (e) {
       updateResultCard(card, `Error: ${e.message}`);
