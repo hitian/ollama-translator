@@ -117,6 +117,13 @@ textarea#sourceText {
   border-radius: 10px;
   padding: 12px 14px;
 }
+.result-separator {
+  display: flex; align-items: center; gap: 8px; color: var(--muted);
+  font-weight: 600; margin: 14px 0 6px;
+}
+.result-separator::before, .result-separator::after {
+  content: ""; height: 1px; background: var(--border); flex: 1 1 0;
+}
 .result-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .result-title { font-weight: 600; font-size: 13px; color: #4338ca; }
 .result-actions { display: flex; align-items: center; gap: 6px; }
@@ -129,9 +136,29 @@ textarea#sourceText {
 .result-body code { background: #f3f4f6; padding: 0.08em 0.35em; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.95em; }
 .result-body pre { background: #f3f4f6; padding: 10px; border-radius: 8px; overflow: auto; }
 .result-body pre code { background: transparent; padding: 0; }
+.result-body pre { position: relative; }
+.code-copy-btn {
+  position: absolute; top: 6px; right: 6px;
+  border: 1px solid var(--border); background: rgba(255,255,255,0.9);
+  color: var(--muted); border-radius: 6px; padding: 4px 6px; cursor: pointer;
+  font-size: 12px; line-height: 1; backdrop-filter: blur(2px);
+}
+.code-copy-btn:hover { color: var(--text); background: #fff; }
+.code-copy-btn.copied { color: #16a34a; border-color: #16a34a; }
+.result-body pre code .tok-comment { color: #6b7280; }
+.result-body pre code .tok-string { color: #065f46; }
+.result-body pre code .tok-number { color: #b45309; }
+.result-body pre code .tok-kw { color: #7c3aed; font-weight: 600; }
+.result-body pre code .tok-prop { color: #1d4ed8; }
+.result-body pre code .tok-var { color: #1d4ed8; }
 .result-body h1, .result-body h2, .result-body h3, .result-body h4, .result-body h5, .result-body h6 { margin: 0.5em 0 0.3em; line-height: 1.25; }
 .result-body blockquote { margin: 0.4em 0; padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted); }
 .result-body a { color: #2563eb; text-decoration: underline; }
+
+/* Tables */
+.result-body table { border-collapse: collapse; width: 100%; margin: 0.6em 0; }
+.result-body thead th { background: #f8fafc; }
+.result-body th, .result-body td { border: 1px solid var(--border); padding: 6px 8px; }
 
 .skeleton {
   background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 37%, #f3f4f6 63%);
@@ -155,10 +182,19 @@ textarea#sourceText {
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .field { display: grid; gap: 6px; margin-top: 10px; }
 .field input { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.radio-group { display: flex; gap: 14px; align-items: center; }
+.radio-group label { display: inline-flex; align-items: center; gap: 6px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .models-list { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: 8px; display: grid; gap: 6px; }
 .model-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; }
 .model-item:hover { background: var(--surface); }
+.models-filter { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.selected-block { margin: 10px 0 6px; }
+.selected-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.selected-models { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
+.selected-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 8px; font-size: 12px; }
+.selected-pill button { border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
+.selected-pill button:hover { color: var(--text); }
 
 .visually-hidden { position: absolute !important; height: 1px; width: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); white-space: nowrap; }
 

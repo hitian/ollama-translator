@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ollama Translator</title>
     <link rel="stylesheet" href="styles.css" />
+    <!-- Markdown + Syntax Highlighting (CDN). Falls back to internal parser if unavailable. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/javascript.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/typescript.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/json.min.js"></script>
   </head>
   <body>
     <div class="app">
@@ -42,7 +51,7 @@
             </svg>
           </button>
 
-          <button id="modelBtn" class="btn btn-secondary" title="Choose models">Model <span id="modelCount">0</span></button>
+          <button id="modelBtn" class="btn btn-secondary" title="Go to Model Selection">Models</button>
           <button id="translateBtn" class="btn btn-primary">Translate</button>
         </div>
       </header>
@@ -71,7 +80,15 @@
         <h3 id="settingsTitle">Settings</h3>
         <label class="field">
           <span>Ollama API base URL</span>
-          <input id="apiBaseUrl" type="text" placeholder="http://localhost:11434" />
+          <input id="apiBaseUrlOllama" type="text" placeholder="http://localhost:11434" />
+        </label>
+        <label class="field">
+          <span>OpenAI API base URL</span>
+          <input id="apiBaseUrlOpenAI" type="text" placeholder="https://api.openai.com/v1" />
+        </label>
+        <label class="field">
+          <span>OpenAI API token</span>
+          <input id="apiToken" type="password" placeholder="sk-..." />
         </label>
         <div class="modal-actions">
           <button id="settingsCancel" class="btn">Cancel</button>
@@ -86,6 +103,14 @@
         <div class="modal-header">
           <h3 id="modelsTitle">Select Models</h3>
           <button id="refreshModels" class="btn btn-link">Refresh</button>
+        </div>
+        <div class="field">
+          <span>Filter</span>
+          <input id="modelsFilter" class="models-filter" type="text" placeholder="Type to filter models..." />
+        </div>
+        <div class="selected-block">
+          <div class="selected-title">Selected</div>
+          <div id="selectedModels" class="selected-models"><!-- pills --></div>
         </div>
         <div id="modelsList" class="models-list">
           <!-- Dynamically filled -->

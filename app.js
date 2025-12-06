@@ -1,13 +1,13 @@
 // Ollama Translator UI logic
 
-const DEFAULT_BASE_URL = "http://localhost:11434";
+const OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434";
+const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
 const els = {
   from: document.getElementById("fromLang"),
   to: document.getElementById("toLang"),
   swap: document.getElementById("swapLang"),
   modelBtn: document.getElementById("modelBtn"),
-  modelCount: document.getElementById("modelCount"),
   translateBtn: document.getElementById("translateBtn"),
   text: document.getElementById("sourceText"),
   charCount: document.getElementById("charCount"),
@@ -16,35 +16,41 @@ const els = {
   // settings
   settingsBtn: document.getElementById("settingsBtn"),
   settingsModal: document.getElementById("settingsModal"),
-  apiBaseUrl: document.getElementById("apiBaseUrl"),
+  apiBaseUrlOllama: document.getElementById("apiBaseUrlOllama"),
+  apiBaseUrlOpenAI: document.getElementById("apiBaseUrlOpenAI"),
+  apiToken: document.getElementById("apiToken"),
   settingsSave: document.getElementById("settingsSave"),
   settingsCancel: document.getElementById("settingsCancel"),
   // models
   modelsModal: document.getElementById("modelsModal"),
   modelsList: document.getElementById("modelsList"),
+  modelsFilter: document.getElementById("modelsFilter"),
+  selectedModels: document.getElementById("selectedModels"),
   modelsDone: document.getElementById("modelsDone"),
   modelsCancel: document.getElementById("modelsCancel"),
   refreshModels: document.getElementById("refreshModels"),
 };
 
-function getBaseUrl() {
-  return (localStorage.getItem("ollama_base_url") || DEFAULT_BASE_URL).replace(/\/$/, "");
-}
-function setBaseUrl(url) {
-  localStorage.setItem("ollama_base_url", url.replace(/\/$/, ""));
-}
+// Modal state for model picker
+let modalState = null; // { all: {ollama:string[], openai:string[]}, filter: string }
+
+function getOllamaBaseUrl() { return (localStorage.getItem('ollama_base_url') || OLLAMA_DEFAULT_BASE_URL).replace(/\/$/, ""); }
+function setOllamaBaseUrl(url) { localStorage.setItem('ollama_base_url', (url || OLLAMA_DEFAULT_BASE_URL).replace(/\/$/, "")); }
+function getOpenAiBaseUrl() { return (localStorage.getItem('openai_base_url') || OPENAI_DEFAULT_BASE_URL).replace(/\/$/, ""); }
+function setOpenAiBaseUrl(url) { localStorage.setItem('openai_base_url', (url || OPENAI_DEFAULT_BASE_URL).replace(/\/$/, "")); }
+function getOpenAiToken() { return localStorage.getItem('openai_token') || ''; }
+function setOpenAiToken(tok) { if (tok) localStorage.setItem('openai_token', tok); }
 
 function getSelectedModels() {
   try {
-    const raw = localStorage.getItem("ollama_selected_models");
+    const raw = localStorage.getItem('selected_models');
     if (!raw) return [];
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr : [];
   } catch { return []; }
 }
 function setSelectedModels(list) {
-  localStorage.setItem("ollama_selected_models", JSON.stringify(list));
-  els.modelCount.textContent = String(list.length);
+  try { localStorage.setItem('selected_models', JSON.stringify(Array.from(new Set(list)))); } catch {}
 }
 
 function updateCharCount() {
@@ -58,78 +64,123 @@ function swapLanguages() {
   els.to.value = a;
 }
 
-async function listModels() {
-  const base = getBaseUrl();
-  try {
-    const res = await fetch(`${base}/api/tags`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const models = (data.models || []).map(m => m.name).sort((a,b)=>a.localeCompare(b));
-    return models;
-  } catch (err) {
-    console.error("Failed to fetch models", err);
-    throw new Error(`Unable to fetch models from ${base}. ${err.message}`);
-  }
+async function listModels() { /* legacy for modal; prefer listAllModels */ return []; }
+
+async function listAllModels() {
+  const ollamaBase = getOllamaBaseUrl();
+  const openaiBase = getOpenAiBaseUrl();
+  const token = getOpenAiToken();
+  const results = { ollama: [], openai: [] };
+  const tasks = [];
+  tasks.push((async () => {
+    try { const res = await fetch(`${ollamaBase}/api/tags`); if (res.ok) { const data = await res.json(); results.ollama = (data.models || []).map(m=>m.name).sort((a,b)=>a.localeCompare(b)); } } catch {}
+  })());
+  tasks.push((async () => {
+    if (!token) return; try { const res = await fetch(`${openaiBase.replace(/\/$/, '')}/models`, { headers: { 'Authorization': `Bearer ${token}` } }); if (res.ok) { const data = await res.json(); results.openai = (data.data || []).map(m=>m.id).sort((a,b)=>a.localeCompare(b)); } } catch {}
+  })());
+  await Promise.all(tasks);
+  return results;
 }
 
-function renderModelsList(allModels, selected) {
+function renderCombined(all, filterText = "") {
   els.modelsList.innerHTML = "";
-  if (!allModels.length) {
-    const div = document.createElement("div");
-    div.textContent = "No models found. Use ollama to pull images.";
-    els.modelsList.appendChild(div);
-    return;
-  }
-  allModels.forEach(name => {
-    const item = document.createElement("label");
-    item.className = "model-item";
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.value = name;
-    cb.checked = selected.includes(name);
-    const span = document.createElement("span");
-    span.textContent = name;
-    item.appendChild(cb);
-    item.appendChild(span);
-    els.modelsList.appendChild(item);
+  const q = (filterText || "").toLowerCase();
+  const apply = (arr) => q ? arr.filter(m => m.toLowerCase().includes(q)) : arr;
+  const renderSection = (label, items) => {
+    const hdr = document.createElement('div');
+    hdr.className = 'selected-title';
+    hdr.textContent = label;
+    els.modelsList.appendChild(hdr);
+    const list = apply(items || []);
+    if (!list.length) {
+      const none = document.createElement('div');
+      none.className = 'model-item';
+      none.textContent = 'No models';
+      els.modelsList.appendChild(none);
+      return;
+    }
+    list.forEach(name => {
+      const item = document.createElement('label');
+      item.className = 'model-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = name;
+      cb.checked = modalState && modalState.selected ? modalState.selected.has(name) : false;
+      cb.addEventListener('change', () => {
+        if (!modalState) return;
+        if (cb.checked) modalState.selected.add(name); else modalState.selected.delete(name);
+        updateSelectedModelsView();
+      });
+      const span = document.createElement('span');
+      span.textContent = name;
+      item.appendChild(cb);
+      item.appendChild(span);
+      els.modelsList.appendChild(item);
+    });
+  };
+  renderSection('Ollama', all.ollama);
+  renderSection('OpenAI-compatible', all.openai);
+}
+
+function updateSelectedModelsView() {
+  if (!els.selectedModels) return;
+  els.selectedModels.innerHTML = "";
+  const arr = modalState ? Array.from(modalState.selected).sort((a,b)=>a.localeCompare(b)) : getSelectedModels();
+  arr.forEach(name => {
+    const pill = document.createElement('span');
+    pill.className = 'selected-pill';
+    const txt = document.createElement('span'); txt.textContent = name;
+    const x = document.createElement('button'); x.type = 'button'; x.title = 'Remove'; x.textContent = '×';
+    x.addEventListener('click', () => {
+      if (modalState) {
+        modalState.selected.delete(name);
+        updateSelectedModelsView();
+        // reflect in checkboxes if present
+        const cb = els.modelsList.querySelector(`input[type="checkbox"][value="${CSS.escape(name)}"]`);
+        if (cb) cb.checked = false;
+      }
+    });
+    pill.append(txt, x);
+    els.selectedModels.appendChild(pill);
   });
 }
 
 function openSettings() {
-  els.apiBaseUrl.value = getBaseUrl();
-  els.settingsModal.classList.remove("hidden");
+  if (els.apiBaseUrlOllama) els.apiBaseUrlOllama.value = getOllamaBaseUrl();
+  if (els.apiBaseUrlOpenAI) els.apiBaseUrlOpenAI.value = getOpenAiBaseUrl();
+  if (els.apiToken) els.apiToken.value = getOpenAiToken();
+  els.settingsModal.classList.remove('hidden');
 }
 function closeSettings() { els.settingsModal.classList.add("hidden"); }
 
 async function openModels() {
   els.modelsModal.classList.remove("hidden");
-  const selected = getSelectedModels();
+  modalState = { all: { ollama: [], openai: [] }, selected: new Set(getSelectedModels()), filter: "" };
+  if (els.modelsFilter) els.modelsFilter.value = ""; // clear filter on open
   try {
-    const models = await listModels();
-    renderModelsList(models, selected);
+    const all = await listAllModels();
+    modalState.all = all;
+    renderCombined(all, "");
+    updateSelectedModelsView();
   } catch (e) {
-    renderModelsList([], selected);
+    modalState.all = { ollama: [], openai: [] };
+    renderCombined(modalState.all, "");
     alert(e.message);
   }
 }
-function closeModels() { els.modelsModal.classList.add("hidden"); }
+function closeModels() { els.modelsModal.classList.add("hidden"); modalState = null; }
 
 async function refreshModelsList() {
-  const selected = getSelectedModels();
   try {
-    const models = await listModels();
-    renderModelsList(models, selected);
-  } catch (e) {
-    alert(e.message);
-  }
+    const all = await listAllModels();
+    if (modalState) modalState.all = all;
+    renderCombined(all, modalState ? modalState.filter : "");
+  } catch (e) { alert(e.message); }
 }
 
-function collectModelsFromModal() {
-  const cbs = els.modelsList.querySelectorAll('input[type="checkbox"]');
-  const picked = [];
-  cbs.forEach(cb => { if (cb.checked) picked.push(cb.value); });
-  return picked;
-}
+function collectModelsFromModal() { return modalState ? Array.from(modalState.selected) : getSelectedModels(); }
+
+// (single renderCombined definition above creates checkboxes)
 
 function addResultCardPending(model) {
   const card = document.createElement("article");
@@ -167,6 +218,7 @@ function addResultCardPending(model) {
 function updateResultCard(card, text) {
   const body = card.querySelector(".result-body");
   body.innerHTML = markdownToHtml(text || "");
+  enhanceCodeBlocks(body);
   const btn = card.querySelector(".result-actions .icon-btn");
   if (btn) {
     btn.disabled = !text;
@@ -174,18 +226,17 @@ function updateResultCard(card, text) {
   }
 }
 
-async function translateOnce(model, from, to, text, onPartial) {
-  const base = getBaseUrl();
+// Provider-specific translation
+
+async function translateOnceOllama(model, from, to, text, onPartial) {
+  const base = getOllamaBaseUrl();
   const prompt = `Translate the following text from ${from} to ${to}. Preserve meaning, lists and punctuation. Return only the translated text.\n\n${text}`;
   const res = await fetch(`${base}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // Use streaming responses from Ollama
     body: JSON.stringify({ model, prompt, stream: true }),
   });
   if (!res.ok || !res.body) throw new Error(`Model ${model} failed: HTTP ${res.status}`);
-
-  // Parse NDJSON stream, accumulating partial responses
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -206,53 +257,102 @@ async function translateOnce(model, from, to, text, onPartial) {
             fullText += obj.response;
             if (typeof onPartial === "function") onPartial(fullText);
           }
-          if (obj.error) {
-            throw new Error(obj.error);
-          }
-          if (obj.done) {
-            // drain any remaining buffered bytes
-            break;
-          }
+          if (obj.error) throw new Error(obj.error);
+          if (obj.done) break;
         } catch (e) {
-          // If a partial JSON chunk slipped through, prepend back to buffer
-          // and continue reading. Only rethrow non-syntax errors.
           if (!(e instanceof SyntaxError)) throw e;
           buffer = line + "\n" + buffer;
           break;
         }
       }
     }
-  } finally {
-    try { reader.releaseLock(); } catch {}
-  }
+  } finally { try { reader.releaseLock(); } catch {} }
+  return fullText;
+}
+
+async function translateOnceOpenAI(model, from, to, text, onPartial) {
+  const base = getOpenAiBaseUrl();
+  const token = getOpenAiToken();
+  if (!token) throw new Error('Missing OpenAI token');
+  const prompt = `Translate the following text from ${from} to ${to}. Preserve meaning, lists and punctuation. Return only the translated text.\n\n${text}`;
+  const url = `${base.replace(/\/$/, '')}/chat/completions`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
+      model,
+      stream: true,
+      messages: [
+        { role: 'system', content: 'You are a helpful translation engine.' },
+        { role: 'user', content: prompt }
+      ]
+    })
+  });
+  if (!res.ok || !res.body) throw new Error(`Model ${model} failed: HTTP ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const chunk = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const lines = chunk.split('\n');
+        for (const ln of lines) {
+          const m = ln.match(/^data:\s*(.*)$/);
+          if (!m) continue;
+          const data = m[1].trim();
+          if (data === '[DONE]') { buffer = ''; break; }
+          try {
+            const obj = JSON.parse(data);
+            const delta = obj.choices && obj.choices[0] && obj.choices[0].delta && obj.choices[0].delta.content;
+            if (delta) {
+              fullText += delta;
+              if (typeof onPartial === 'function') onPartial(fullText);
+            }
+            const err = obj.error && (obj.error.message || obj.error);
+            if (err) throw new Error(err);
+          } catch {}
+        }
+      }
+    }
+  } finally { try { reader.releaseLock(); } catch {} }
   return fullText;
 }
 
 async function performTranslate() {
   const text = els.text.value.trim();
   if (!text) { alert("Please enter text to translate."); return; }
-  const models = getSelectedModels();
-  if (!models.length) { alert("Please select at least one model."); return; }
 
   els.translateBtn.disabled = true;
   els.results.innerHTML = "";
 
-  for (const model of models) {
-    const card = addResultCardPending(model);
-    try {
-      const out = await translateOnce(
-        model,
-        els.from.value,
-        els.to.value,
-        text,
-        // stream callback to update UI incrementally
-        (partial) => updateResultCard(card, partial)
-      );
-      updateResultCard(card, out);
-    } catch (e) {
-      updateResultCard(card, `Error: ${e.message}`);
+  // List models from both providers
+  const { ollama, openai } = await listAllModels();
+  const selected = new Set(getSelectedModels());
+  const ollamaList = selected.size ? ollama.filter(m => selected.has(m)) : ollama;
+  const openaiList = selected.size ? openai.filter(m => selected.has(m)) : openai;
+
+  const runGroup = async (label, list, fn) => {
+    if (!list || !list.length) return;
+    const sep = document.createElement('div'); sep.className = 'result-separator'; sep.textContent = label;
+    els.results.appendChild(sep);
+    for (const model of list) {
+      const card = addResultCardPending(model);
+      try {
+        const out = await fn(model, els.from.value, els.to.value, text, (partial) => updateResultCard(card, partial));
+        updateResultCard(card, out);
+      } catch (e) { updateResultCard(card, `Error: ${e.message}`); }
     }
-  }
+  };
+
+  await runGroup('Ollama', ollamaList, translateOnceOllama);
+  await runGroup('OpenAI-compatible', openaiList, translateOnceOpenAI);
 
   els.translateBtn.disabled = false;
 }
@@ -271,13 +371,16 @@ els.swap.addEventListener("click", swapLanguages);
 
 els.settingsBtn.addEventListener("click", openSettings);
 els.settingsCancel.addEventListener("click", closeSettings);
-els.settingsSave.addEventListener("click", () => {
-  const url = els.apiBaseUrl.value.trim() || DEFAULT_BASE_URL;
-  setBaseUrl(url);
+els.settingsSave.addEventListener('click', () => {
+  if (els.apiBaseUrlOllama) setOllamaBaseUrl((els.apiBaseUrlOllama.value || OLLAMA_DEFAULT_BASE_URL).trim());
+  if (els.apiBaseUrlOpenAI) setOpenAiBaseUrl((els.apiBaseUrlOpenAI.value || OPENAI_DEFAULT_BASE_URL).trim());
+  if (els.apiToken) setOpenAiToken((els.apiToken.value || '').trim());
   closeSettings();
 });
 
-els.modelBtn.addEventListener("click", openModels);
+// no mode toggles needed
+
+if (els.modelBtn) els.modelBtn.addEventListener("click", openModels);
 els.modelsCancel.addEventListener("click", closeModels);
 els.modelsDone.addEventListener("click", () => {
   const picked = collectModelsFromModal();
@@ -286,14 +389,21 @@ els.modelsDone.addEventListener("click", () => {
 });
 els.refreshModels.addEventListener("click", refreshModelsList);
 
+if (els.modelsFilter) {
+  els.modelsFilter.addEventListener('input', (e) => {
+    const val = e.target.value;
+    if (modalState) modalState.filter = val;
+    const all = modalState ? modalState.all : { ollama: [], openai: [] };
+    renderCombined(all, val);
+  });
+}
+
 els.translateBtn.addEventListener("click", performTranslate);
 
 // init
 (() => {
-  // default base url
-  if (!localStorage.getItem("ollama_base_url")) setBaseUrl(DEFAULT_BASE_URL);
-  // reflect model count
-  els.modelCount.textContent = String(getSelectedModels().length);
+  if (!localStorage.getItem('ollama_base_url')) localStorage.setItem('ollama_base_url', OLLAMA_DEFAULT_BASE_URL);
+  if (!localStorage.getItem('openai_base_url')) localStorage.setItem('openai_base_url', OPENAI_DEFAULT_BASE_URL);
 })();
 
 // Clipboard helper
@@ -325,6 +435,27 @@ async function copyToClipboard(text, btn) {
 // Basic Markdown renderer (safe subset)
 function markdownToHtml(src) {
   if (!src) return "";
+  // If Marked is available, prefer it with Highlight.js
+  if (typeof window !== 'undefined' && window.marked) {
+    try {
+      if (window.hljs) {
+        const highlight = (code, lang) => {
+          try {
+            if (lang && hljs.getLanguage(lang)) {
+              return hljs.highlight(code, { language: lang }).value;
+            }
+            return hljs.highlightAuto(code).value;
+          } catch { return code; }
+        };
+        window.marked.setOptions({ gfm: true, breaks: true, highlight });
+      } else {
+        window.marked.setOptions({ gfm: true, breaks: true });
+      }
+      return window.marked.parse(src);
+    } catch (e) { /* fall through to fallback */ }
+  }
+
+  // Fallback: minimal Markdown
   // Normalize line endings
   let text = String(src).replace(/\r\n?/g, "\n");
 
@@ -333,13 +464,13 @@ function markdownToHtml(src) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;");
+    .replace(/"/g, "&quot;");
 
-  // Handle fenced code blocks ```...```
+  // Handle fenced code blocks ```lang\n...```
   const codeBlocks = [];
-  text = text.replace(/```([\s\S]*?)```/g, (_, code) => {
-    const escaped = escapeHtml(code);
-    codeBlocks.push(`<pre><code>${escaped}</code></pre>`);
+  text = text.replace(/```([A-Za-z0-9_+\-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const highlighted = highlightCode(code, (lang || '').trim(), escapeHtml);
+    codeBlocks.push(highlighted);
     return `\uE000${codeBlocks.length - 1}\uE000`;
   });
 
@@ -409,6 +540,45 @@ function markdownToHtml(src) {
       continue;
     }
 
+    // Table (GitHub-style): header, separator, rows
+    if (line.includes('|') && i + 1 < lines.length) {
+      const sep = lines[i + 1];
+      const sepMatch = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(sep);
+      if (sepMatch) {
+        closeLists();
+        const parseRow = (row) => row
+          .split('|')
+          .map(c => c.trim())
+          .filter((c, idx, arr) => !(idx === 0 && c === '') && !(idx === arr.length - 1 && c === ''));
+        const headerCells = parseRow(line);
+        const alignParts = parseRow(sep).map(p => {
+          const left = /^:\-+/.test(p);
+          const right = /\-+:$/.test(p);
+          return left && right ? 'center' : right ? 'right' : 'left';
+        });
+        const rows = [];
+        let j = i + 2;
+        while (j < lines.length && lines[j].trim().includes('|')) {
+          const r = parseRow(lines[j]);
+          if (r.length) rows.push(r);
+          j++;
+        }
+        i = j - 1; // advance
+        let tbl = '<table class="md-table">\n<thead><tr>' + headerCells.map((h, idx) => {
+          const align = alignParts[idx] || 'left';
+          return `<th style="text-align:${align}">${renderInline(h)}</th>`;
+        }).join('') + '</tr></thead>';
+        tbl += '<tbody>' + (rows.map(r => {
+          return '<tr>' + r.map((c, idx) => {
+            const align = alignParts[idx] || 'left';
+            return `<td style="text-align:${align}">${renderInline(c)}</td>`;
+          }).join('') + '</tr>';
+        }).join('')) + '</tbody></table>';
+        out.push(tbl);
+        continue;
+      }
+    }
+
     // Paragraph
     closeLists();
     out.push(`<p>${renderInline(line)}</p>`);
@@ -419,4 +589,101 @@ function markdownToHtml(src) {
   // Restore code blocks placeholders
   html = html.replace(/\uE000(\d+)\uE000/g, (_, idx) => codeBlocks[Number(idx)] || "");
   return html;
+}
+
+// Tiny syntax highlighter (best-effort)
+function highlightCode(code, lang, escapeHtml) {
+  const l = String(lang || '').toLowerCase();
+  const esc = escapeHtml(code);
+  const span = (cls, s) => `<span class="tok-${cls}">${s}</span>`;
+  const kw = (words) => new RegExp(`\\b(${words.join('|')})\\b`, 'g');
+
+  const restore = (src, placeholders) => src.replace(/\uE002(\d+)\uE002/g, (_, i) => placeholders[Number(i)] || '');
+
+  if (['js','jsx','ts','tsx','javascript','typescript'].includes(l)) {
+    let tmp = esc;
+    const placeholders = [];
+    const put = (html) => { const i = placeholders.length; placeholders.push(html); return `\uE002${i}\uE002`; };
+    // Wrap and protect comments
+    tmp = tmp.replace(/\/\*[\s\S]*?\*\//g, m => put(span('comment', m)));
+    tmp = tmp.replace(/^\/\/.*$/gm, m => put(span('comment', m)));
+    // Highlight the rest
+    tmp = tmp
+      .replace(/`[^`]*`|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, m => span('string', m))
+      .replace(/\b(0x[0-9a-fA-F]+|\d+(?:\.\d+)?)\b/g, m => span('number', m))
+      .replace(kw(['const','let','var','function','return','if','else','for','while','class','new','import','from','export','default','extends','super','this','try','catch','finally','throw','switch','case','break','continue','true','false','null','undefined','in','of']), m => span('kw', m));
+    const highlighted = restore(tmp, placeholders);
+    return `<pre><code class="language-${l}">${highlighted}</code></pre>`;
+  }
+
+  if (['json'].includes(l)) {
+    const rules = [
+      { re: /"(?:[^"\\]|\\.)*"(?=\s*:)/g, fn: m => span('prop', m) },
+      { re: /"(?:[^"\\]|\\.)*"/g, fn: m => span('string', m) },
+      { re: /\b(true|false|null)\b/g, fn: m => span('kw', m) },
+      { re: /\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/g, fn: m => span('number', m) },
+    ];
+    const highlighted = apply(esc, rules);
+    return `<pre><code class="language-${l}">${highlighted}</code></pre>`;
+  }
+
+  if (['py','python'].includes(l)) {
+    let tmp = esc;
+    const placeholders = [];
+    const put = (html) => { const i = placeholders.length; placeholders.push(html); return `\uE002${i}\uE002`; };
+    tmp = tmp.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''/g, m => put(span('comment', m)));
+    tmp = tmp.replace(/^#.*$/gm, m => put(span('comment', m)));
+    tmp = tmp
+      .replace(/"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, m => span('string', m))
+      .replace(/\b(\d+(?:\.\d+)?)\b/g, m => span('number', m))
+      .replace(kw(['def','return','if','elif','else','for','while','class','import','from','as','try','except','finally','with','lambda','True','False','None','pass','break','continue','yield','global','nonlocal','in','is','not','and','or','self']), m => span('kw', m));
+    const highlighted = restore(tmp, placeholders);
+    return `<pre><code class="language-${l}">${highlighted}</code></pre>`;
+  }
+
+  if (['bash','sh','zsh','shell'].includes(l)) {
+    let tmp = esc;
+    const placeholders = [];
+    const put = (html) => { const i = placeholders.length; placeholders.push(html); return `\uE002${i}\uE002`; };
+    tmp = tmp.replace(/^#!.*$/gm, m => put(span('comment', m)));
+    tmp = tmp.replace(/#.*$/gm, m => put(span('comment', m)));
+    tmp = tmp
+      .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, m => span('var', m))
+      .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, m => span('string', m))
+      .replace(kw(['if','then','fi','elif','else','for','in','do','done','case','esac','function','select','until']), m => span('kw', m))
+      .replace(/\b\d+\b/g, m => span('number', m));
+    const highlighted = restore(tmp, placeholders);
+    return `<pre><code class="language-${l}">${highlighted}</code></pre>`;
+  }
+
+  // Fallback: escaped, no highlighting
+  return `<pre><code class="language-${l || 'text'}">${esc}</code></pre>`;
+}
+
+// After rendering markdown, enhance code blocks: highlight (if hljs), add copy buttons
+function enhanceCodeBlocks(root) {
+  if (!root) return;
+  const pres = root.querySelectorAll('pre');
+  pres.forEach(pre => {
+    // Remove any previous copy button to avoid duplicates on streaming updates
+    const existing = pre.querySelector('.code-copy-btn');
+    if (existing) existing.remove();
+
+    const codeEl = pre.querySelector('code') || pre;
+    if (window.hljs && codeEl && !codeEl.classList.contains('hljs')) {
+      try { window.hljs.highlightElement(codeEl); } catch {}
+    }
+
+    const btn = document.createElement('button');
+    btn.className = 'code-copy-btn';
+    btn.type = 'button';
+    btn.title = 'Copy code';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const text = codeEl ? codeEl.innerText : pre.innerText;
+      await copyToClipboard(text, btn);
+    });
+    pre.appendChild(btn);
+  });
 }

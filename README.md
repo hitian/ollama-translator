@@ -8,11 +8,13 @@ A minimal, static web app to translate text using one or more Ollama models. Mat
 ## Features
 - Language selection with swap (English, Chinese, Simplified, Japanese, Korean)
 - Settings modal to configure Ollama API base URL
-- Model picker (multi-select) populated from Ollama `/api/tags`
-- Translate button runs each selected model sequentially via `/api/generate`
-- Separate result card per model in selection order
+- Uses both Ollama and OpenAI-compatible APIs simultaneously (when configured)
+- No model selection UI; discovers all available models from both providers
+- Clear separators group results by provider, one card per model
 - LocalStorage persistence for API URL and selected models
-- Results support Markdown formatting (headings, lists, code, links)
+- Results support Markdown formatting (headings, lists, code, links),
+  including syntax highlighting for common languages (JS/TS, JSON, Python, Bash)
+  and GitHub-style tables.
 
 ## Quick Start
 1. Ensure Ollama is running and models are available.
@@ -27,16 +29,23 @@ A minimal, static web app to translate text using one or more Ollama models. Mat
 6. Enter text and click “Translate”. Results appear in order of selection.
 
 ## Configuration
-- Base URL is stored in LocalStorage under `ollama_base_url`.
-- Selected models are stored under `ollama_selected_models`.
+- Base URLs:
+  - `ollama_base_url` (default `http://localhost:11434`)
+  - `openai_base_url` (default `https://api.openai.com/v1`)
+- Token: `openai_token` (if set, enables OpenAI-compatible access)
 
 ## API Endpoints Used
-- `GET /api/tags` — list available images (models)
-- `POST /api/generate` with `{ model, prompt, stream: true }` — streaming translation (UI updates live)
+- Ollama:
+  - `GET /api/tags` — list available images (models)
+  - `POST /api/generate` with `{ model, prompt, stream: true }` — streaming translation (NDJSON)
+- OpenAI-compatible:
+  - `GET /v1/models` — list available models (requires token)
+  - `POST /v1/chat/completions` with streaming — reads SSE `data:` chunks
 
 ## Notes
 - CORS: When opening `index.html` directly via `file://`, browsers typically block requests. Serve the folder as shown above. If needed, configure Ollama origins (version-dependent), e.g. `export OLLAMA_ORIGINS=*` when starting Ollama.
 - The app is framework-free (HTML/CSS/JS). No build step is required.
+- If using an OpenAI-compatible provider, set the base URL to the provider’s API root (e.g., `https://api.openai.com/v1`) and provide a valid token.
 
 ## Files
 - `index.html` — Page structure and modals
