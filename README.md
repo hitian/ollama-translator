@@ -12,6 +12,7 @@ A minimal, static web app to translate text using one or more Ollama models. Mat
 - Translate button runs each selected model sequentially via `/api/generate`
 - Separate result card per model in selection order
 - LocalStorage persistence for API URL and selected models
+- Results support Markdown formatting (headings, lists, code, links)
 
 ## Quick Start
 1. Ensure Ollama is running and models are available.

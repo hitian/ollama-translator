@@ -122,7 +122,16 @@ textarea#sourceText {
 .result-actions { display: flex; align-items: center; gap: 6px; }
 .tool-btn { height: 28px; width: 28px; min-width: 28px; }
 .result-tools { display: flex; align-items: center; gap: 8px; color: var(--muted); }
-.result-body { white-space: pre-wrap; }
+.result-body { line-height: 1.6; }
+.result-body p { margin: 0.4em 0; }
+.result-body ul, .result-body ol { margin: 0.4em 0; padding-left: 1.2em; }
+.result-body li { margin: 0.2em 0; }
+.result-body code { background: #f3f4f6; padding: 0.08em 0.35em; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.95em; }
+.result-body pre { background: #f3f4f6; padding: 10px; border-radius: 8px; overflow: auto; }
+.result-body pre code { background: transparent; padding: 0; }
+.result-body h1, .result-body h2, .result-body h3, .result-body h4, .result-body h5, .result-body h6 { margin: 0.5em 0 0.3em; line-height: 1.25; }
+.result-body blockquote { margin: 0.4em 0; padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted); }
+.result-body a { color: #2563eb; text-decoration: underline; }
 
 .skeleton {
   background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 37%, #f3f4f6 63%);

@@ -169,7 +169,7 @@ function addResultCardPending(model) {
 
 function updateResultCard(card, text) {
   const body = card.querySelector(".result-body");
-  body.textContent = text;
+  body.innerHTML = markdownToHtml(text || "");
   const btn = card.querySelector(".result-actions .icon-btn");
   if (btn) {
     btn.disabled = !text;
@@ -317,4 +317,103 @@ async function copyToClipboard(text, btn) {
   } catch (e) {
     alert("Copy failed: " + e.message);
   }
+}
+
+// Basic Markdown renderer (safe subset)
+function markdownToHtml(src) {
+  if (!src) return "";
+  // Normalize line endings
+  let text = String(src).replace(/\r\n?/g, "\n");
+
+  // Escape HTML first to avoid injection
+  const escapeHtml = (s) => s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;");
+
+  // Handle fenced code blocks ```...```
+  const codeBlocks = [];
+  text = text.replace(/```([\s\S]*?)```/g, (_, code) => {
+    const escaped = escapeHtml(code);
+    codeBlocks.push(`<pre><code>${escaped}</code></pre>`);
+    return `\uE000${codeBlocks.length - 1}\uE000`;
+  });
+
+  // Split into lines and build block HTML
+  const lines = text.split(/\n/);
+  const out = [];
+  let inUl = false, inOl = false;
+
+  const closeLists = () => {
+    if (inUl) { out.push("</ul>"); inUl = false; }
+    if (inOl) { out.push("</ol>"); inOl = false; }
+  };
+
+  const renderInline = (s) => {
+    let t = escapeHtml(s);
+    // Inline code `code`
+    t = t.replace(/`([^`]+)`/g, (m, a) => `<code>${a}</code>`);
+    // Bold **text**
+    t = t.replace(/\*\*([^*]+)\*\*/g, (m, a) => `<strong>${a}</strong>`);
+    // Italic *text* or _text_
+    t = t.replace(/\b_([^_]+)_\b/g, (m, a) => `<em>${a}</em>`);
+    t = t.replace(/(^|\W)\*([^*]+)\*(?=\W|$)/g, (m, pre, a) => `${pre}<em>${a}</em>`);
+    // Links [text](url)
+    t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, href) => {
+      try {
+        const safe = String(href).trim();
+        const ok = /^(https?:|mailto:|#|\/)/i.test(safe);
+        const h = ok ? safe : '#';
+        return `<a href="${h}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+      } catch { return label; }
+    });
+    return t;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) { closeLists(); continue; }
+
+    // Headings
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      closeLists();
+      const level = h[1].length;
+      out.push(`<h${level}>${renderInline(h[2])}</h${level}>`);
+      continue;
+    }
+
+    // Blockquote
+    const bq = line.match(/^>\s?(.*)$/);
+    if (bq) {
+      closeLists();
+      out.push(`<blockquote>${renderInline(bq[1])}</blockquote>`);
+      continue;
+    }
+
+    // Ordered list
+    if (/^\s*\d+\.\s+/.test(line)) {
+      if (!inOl) { closeLists(); out.push("<ol>"); inOl = true; }
+      out.push(`<li>${renderInline(line.replace(/^\s*\d+\.\s+/, ""))}</li>`);
+      continue;
+    }
+
+    // Unordered list
+    if (/^\s*[-*+]\s+/.test(line)) {
+      if (!inUl) { closeLists(); out.push("<ul>"); inUl = true; }
+      out.push(`<li>${renderInline(line.replace(/^\s*[-*+]\s+/, ""))}</li>`);
+      continue;
+    }
+
+    // Paragraph
+    closeLists();
+    out.push(`<p>${renderInline(line)}</p>`);
+  }
+  closeLists();
+
+  let html = out.join("\n");
+  // Restore code blocks placeholders
+  html = html.replace(/\uE000(\d+)\uE000/g, (_, idx) => codeBlocks[Number(idx)] || "");
+  return html;
 }
