@@ -1,20 +1,21 @@
 # Ollama Translator
 
-A minimal, static web app to translate text using one or more Ollama models. Matches the provided UI reference and runs entirely in the browser.
+A minimal, static web app to translate text using one or more Ollama models. Runs entirely in the browser with support for both Ollama and OpenAI-compatible APIs.
+
+🌐 **Live Demo:** [translate.less.run](https://translate.less.run)
 
 ![Screenshot macOS](Screenshot-macOS.png)
 
 
 ## Features
-- Language selection with swap (English, Chinese, Simplified, Japanese, Korean)
-- Settings modal to configure Ollama API base URL
-- Uses both Ollama and OpenAI-compatible APIs simultaneously (when configured)
-- No model selection UI; discovers all available models from both providers
-- Clear separators group results by provider, one card per model
-- LocalStorage persistence for API URL and selected models
-- Results support Markdown formatting (headings, lists, code, links),
-  including syntax highlighting for common languages (JS/TS, JSON, Python, Bash)
-  and GitHub-style tables.
+- Language selection with swap (English, Chinese Simplified, Japanese, Korean)
+- Multi-model selection with concurrent translation (max 3 per provider)
+- Dynamic input limits based on model context windows
+- Model list caching for faster loading
+- Settings modal to configure API endpoints and tokens
+- Results support Markdown formatting with syntax highlighting
+- Privacy-first: all data stored locally, no backend server
+- GitHub Pages deployment ready
 
 ## Quick Start
 1. Ensure Ollama is running and models are available.
@@ -46,6 +47,19 @@ A minimal, static web app to translate text using one or more Ollama models. Mat
 - CORS: When opening `index.html` directly via `file://`, browsers typically block requests. Serve the folder as shown above. If needed, configure Ollama origins (version-dependent), e.g. `export OLLAMA_ORIGINS=*` when starting Ollama.
 - The app is framework-free (HTML/CSS/JS). No build step is required.
 - If using an OpenAI-compatible provider, set the base URL to the provider’s API root (e.g., `https://api.openai.com/v1`) and provide a valid token.
+
+## Privacy & Security
+
+**All data stays on your device:**
+- API endpoints, tokens, and model selections are stored in browser localStorage
+- No analytics, tracking, or external services
+- Direct API calls from your browser to configured endpoints only
+- No backend server processes or stores your data
+
+**API Token Usage:**
+- Ollama: No token required (local installation)
+- OpenAI/Compatible APIs: Token required, stored locally, only sent to API endpoint you configure
+- Tokens never leave your browser except in direct API requests
 
 ## Files
 - `index.html` — Page structure and modals

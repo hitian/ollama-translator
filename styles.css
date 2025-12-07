@@ -216,6 +216,21 @@ textarea#sourceText {
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .field { display: grid; gap: 6px; margin-top: 10px; }
 .field input { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.settings-notice {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1e40af;
+}
+.settings-notice strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1e3a8a;
+}
 .radio-group { display: flex; gap: 14px; align-items: center; }
 .radio-group label { display: inline-flex; align-items: center; gap: 6px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }

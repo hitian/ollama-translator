@@ -94,6 +94,11 @@
           <span>OpenAI API token</span>
           <input id="apiToken" type="password" placeholder="sk-..." />
         </label>
+        <div class="settings-notice">
+          <strong>Privacy Notice:</strong> All data is stored locally in your browser. API tokens and settings never leave your device except when making direct API calls to the configured endpoints. This app runs entirely client-side with no backend server.
+          <br><br>
+          <strong>About Tokens:</strong> OpenAI API tokens are required only if you want to use OpenAI or OpenAI-compatible models (like OpenRouter, Together AI, etc.). Your Ollama installation doesn't require a token. Tokens are stored in localStorage and only sent to the API endpoint you configure.
+        </div>
         <div class="modal-actions">
           <button id="settingsCancel" class="btn">Cancel</button>
           <button id="settingsSave" class="btn btn-primary">Save</button>
