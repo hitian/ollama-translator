@@ -38,6 +38,38 @@ let modalState = null; // { all: {ollama:string[], openai:string[]}, filter: str
 // Model info cache: { modelName: { contextLength: number, ... } }
 let modelInfoCache = {};
 
+function getCachedModelLists() {
+  try {
+    const raw = localStorage.getItem('cached_model_lists');
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    // Check if cache is less than 1 hour old
+    const cacheAge = Date.now() - (data.timestamp || 0);
+    if (cacheAge > 3600000) return null; // 1 hour expiry
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedModelLists(ollama, openai, modelInfo) {
+  try {
+    const data = {
+      timestamp: Date.now(),
+      ollama,
+      openai,
+      modelInfo
+    };
+    localStorage.setItem('cached_model_lists', JSON.stringify(data));
+  } catch {}
+}
+
+function clearCachedModelLists() {
+  try {
+    localStorage.removeItem('cached_model_lists');
+  } catch {}
+}
+
 function getOllamaBaseUrl() { return (localStorage.getItem('ollama_base_url') || OLLAMA_DEFAULT_BASE_URL).replace(/\/$/, ""); }
 function setOllamaBaseUrl(url) { localStorage.setItem('ollama_base_url', (url || OLLAMA_DEFAULT_BASE_URL).replace(/\/$/, "")); }
 function getOpenAiBaseUrl() { return (localStorage.getItem('openai_base_url') || OPENAI_DEFAULT_BASE_URL).replace(/\/$/, ""); }
@@ -142,7 +174,17 @@ async function getOllamaModelInfo(modelName) {
   }
 }
 
-async function listAllModels() {
+async function listAllModels(forceRefresh = false) {
+  // Try to use cache unless force refresh
+  if (!forceRefresh) {
+    const cached = getCachedModelLists();
+    if (cached) {
+      // Restore model info cache
+      modelInfoCache = cached.modelInfo || {};
+      return { ollama: cached.ollama || [], openai: cached.openai || [] };
+    }
+  }
+
   const ollamaBase = getOllamaBaseUrl();
   const openaiBase = getOpenAiBaseUrl();
   const token = getOpenAiToken();
@@ -190,6 +232,10 @@ async function listAllModels() {
     } catch {}
   })());
   await Promise.all(tasks);
+  
+  // Cache the results
+  setCachedModelLists(results.ollama, results.openai, modelInfoCache);
+  
   return results;
 }
 
@@ -272,7 +318,7 @@ async function openModels() {
   modalState = { all: { ollama: [], openai: [] }, selected: new Set(getSelectedModels()), filter: "" };
   if (els.modelsFilter) els.modelsFilter.value = ""; // clear filter on open
   try {
-    const all = await listAllModels();
+    const all = await listAllModels(false); // Use cache if available
     modalState.all = all;
     renderCombined(all, "");
     updateSelectedModelsView();
@@ -291,7 +337,8 @@ function updateModelButtonText() {
 
 async function refreshModelsList() {
   try {
-    const all = await listAllModels();
+    clearCachedModelLists();
+    const all = await listAllModels(true);
     if (modalState) modalState.all = all;
     renderCombined(all, modalState ? modalState.filter : "");
   } catch (e) { alert(e.message); }
@@ -559,9 +606,9 @@ els.translateBtn.addEventListener("click", performTranslate);
   if (!localStorage.getItem('ollama_base_url')) localStorage.setItem('ollama_base_url', OLLAMA_DEFAULT_BASE_URL);
   if (!localStorage.getItem('openai_base_url')) localStorage.setItem('openai_base_url', OPENAI_DEFAULT_BASE_URL);
   updateModelButtonText();
-  // Load model info cache on startup
+  // Load model info cache on startup (use cache if available)
   try {
-    await listAllModels();
+    await listAllModels(false);
     updateInputLimit();
   } catch {}
 })();
