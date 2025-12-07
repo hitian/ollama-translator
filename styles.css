@@ -108,6 +108,24 @@ textarea#sourceText {
   font-size: 12px;
 }
 
+.token-warning {
+  position: absolute;
+  bottom: 28px;
+  right: 12px;
+  left: 12px;
+  color: #d97706;
+  background: #fef3c7;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #fbbf24;
+  line-height: 1.3;
+}
+
+.token-warning.hidden {
+  display: none;
+}
+
 .clear-btn { position: absolute; top: 8px; right: 8px; height: 30px; width: 30px; }
 
 .results { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }

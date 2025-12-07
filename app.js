@@ -11,6 +11,7 @@ const els = {
   translateBtn: document.getElementById("translateBtn"),
   text: document.getElementById("sourceText"),
   charCount: document.getElementById("charCount"),
+  tokenWarning: document.getElementById("tokenWarning"),
   clearBtn: document.getElementById("clearInputBtn"),
   results: document.getElementById("results"),
   // settings
@@ -34,6 +35,9 @@ const els = {
 // Modal state for model picker
 let modalState = null; // { all: {ollama:string[], openai:string[]}, filter: string }
 
+// Model info cache: { modelName: { contextLength: number, ... } }
+let modelInfoCache = {};
+
 function getOllamaBaseUrl() { return (localStorage.getItem('ollama_base_url') || OLLAMA_DEFAULT_BASE_URL).replace(/\/$/, ""); }
 function setOllamaBaseUrl(url) { localStorage.setItem('ollama_base_url', (url || OLLAMA_DEFAULT_BASE_URL).replace(/\/$/, "")); }
 function getOpenAiBaseUrl() { return (localStorage.getItem('openai_base_url') || OPENAI_DEFAULT_BASE_URL).replace(/\/$/, ""); }
@@ -53,9 +57,49 @@ function setSelectedModels(list) {
   try { localStorage.setItem('selected_models', JSON.stringify(Array.from(new Set(list)))); } catch {}
 }
 
+function getMinTokenLimit() {
+  const selected = getSelectedModels();
+  if (!selected.length) return 5000; // default if no models selected
+  
+  let minLimit = Infinity;
+  for (const modelName of selected) {
+    const info = modelInfoCache[modelName];
+    if (info && info.contextLength) {
+      // Reserve ~20% for output and system prompt
+      const inputLimit = Math.floor(info.contextLength * 0.8);
+      minLimit = Math.min(minLimit, inputLimit);
+    }
+  }
+  
+  // If no info found, use conservative default
+  return minLimit === Infinity ? 2048 : minLimit;
+}
+
+function updateInputLimit() {
+  const limit = getMinTokenLimit();
+  // Approximate: 1 token ~= 4 characters for English text
+  const charLimit = Math.floor(limit * 4);
+  els.text.setAttribute('maxlength', charLimit);
+  updateCharCount();
+}
+
 function updateCharCount() {
   const v = els.text.value || "";
-  els.charCount.textContent = `${v.length} / 5000`;
+  const limit = parseInt(els.text.getAttribute('maxlength')) || 5000;
+  els.charCount.textContent = `${v.length} / ${limit}`;
+  
+  // Show warning if approaching or exceeding limit
+  const tokenLimit = getMinTokenLimit();
+  const approxTokens = Math.ceil(v.length / 4);
+  
+  if (approxTokens > tokenLimit * 0.9) {
+    const selectedModels = getSelectedModels();
+    const modelNames = selectedModels.length > 0 ? selectedModels.join(', ') : 'selected models';
+    els.tokenWarning.textContent = `⚠️ Input approaching token limit (~${approxTokens} tokens). Max for ${modelNames}: ${tokenLimit} tokens`;
+    els.tokenWarning.classList.remove('hidden');
+  } else {
+    els.tokenWarning.classList.add('hidden');
+  }
 }
 
 function swapLanguages() {
@@ -66,6 +110,38 @@ function swapLanguages() {
 
 async function listModels() { /* legacy for modal; prefer listAllModels */ return []; }
 
+async function getOllamaModelInfo(modelName) {
+  try {
+    const base = getOllamaBaseUrl();
+    const res = await fetch(`${base}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: modelName })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Extract context length from modelinfo or parameters
+    let contextLength = 2048; // default fallback
+    if (data.model_info) {
+      // Try to find context length in various possible fields
+      const info = typeof data.model_info === 'string' ? JSON.parse(data.model_info) : data.model_info;
+      contextLength = info['llama.context_length'] || info.context_length || info.num_ctx || contextLength;
+    }
+    if (data.parameters) {
+      const params = data.parameters.split('\n');
+      for (const param of params) {
+        if (param.includes('num_ctx')) {
+          const match = param.match(/num_ctx\s+(\d+)/);
+          if (match) contextLength = parseInt(match[1]);
+        }
+      }
+    }
+    return { contextLength };
+  } catch {
+    return { contextLength: 2048 };
+  }
+}
+
 async function listAllModels() {
   const ollamaBase = getOllamaBaseUrl();
   const openaiBase = getOpenAiBaseUrl();
@@ -73,10 +149,45 @@ async function listAllModels() {
   const results = { ollama: [], openai: [] };
   const tasks = [];
   tasks.push((async () => {
-    try { const res = await fetch(`${ollamaBase}/api/tags`); if (res.ok) { const data = await res.json(); results.ollama = (data.models || []).map(m=>m.name).sort((a,b)=>a.localeCompare(b)); } } catch {}
+    try { 
+      const res = await fetch(`${ollamaBase}/api/tags`); 
+      if (res.ok) { 
+        const data = await res.json(); 
+        results.ollama = (data.models || []).map(m=>m.name).sort((a,b)=>a.localeCompare(b));
+        // Fetch model info for each Ollama model
+        for (const modelName of results.ollama) {
+          const info = await getOllamaModelInfo(modelName);
+          if (info) modelInfoCache[modelName] = info;
+        }
+      } 
+    } catch {}
   })());
   tasks.push((async () => {
-    if (!token) return; try { const res = await fetch(`${openaiBase.replace(/\/$/, '')}/models`, { headers: { 'Authorization': `Bearer ${token}` } }); if (res.ok) { const data = await res.json(); results.openai = (data.data || []).map(m=>m.id).sort((a,b)=>a.localeCompare(b)); } } catch {}
+    if (!token) return; 
+    try { 
+      const res = await fetch(`${openaiBase.replace(/\/$/, '')}/models`, { headers: { 'Authorization': `Bearer ${token}` } }); 
+      if (res.ok) { 
+        const data = await res.json(); 
+        results.openai = (data.data || []).map(m=>m.id).sort((a,b)=>a.localeCompare(b));
+        // Set default context lengths for OpenAI models (these are approximations)
+        const knownLimits = {
+          'gpt-4': 8192, 'gpt-4-32k': 32768, 'gpt-4-turbo': 128000, 'gpt-4-turbo-preview': 128000,
+          'gpt-3.5-turbo': 4096, 'gpt-3.5-turbo-16k': 16384, 'gpt-3.5-turbo-1106': 16385,
+          'gpt-4o': 128000, 'gpt-4o-mini': 128000
+        };
+        for (const modelId of results.openai) {
+          // Try to match known models or use conservative default
+          let contextLength = 4096; // conservative default
+          for (const [pattern, limit] of Object.entries(knownLimits)) {
+            if (modelId.includes(pattern)) {
+              contextLength = limit;
+              break;
+            }
+          }
+          modelInfoCache[modelId] = { contextLength };
+        }
+      } 
+    } catch {}
   })());
   await Promise.all(tasks);
   return results;
@@ -110,9 +221,12 @@ function renderCombined(all, filterText = "") {
         if (!modalState) return;
         if (cb.checked) modalState.selected.add(name); else modalState.selected.delete(name);
         updateSelectedModelsView();
+        updateInputLimit();
       });
       const span = document.createElement('span');
-      span.textContent = name;
+      const info = modelInfoCache[name];
+      const contextText = info ? ` (${info.contextLength} tokens)` : '';
+      span.textContent = name + contextText;
       item.appendChild(cb);
       item.appendChild(span);
       els.modelsList.appendChild(item);
@@ -343,21 +457,46 @@ async function performTranslate() {
   const ollamaList = selected.size ? ollama.filter(m => selected.has(m)) : ollama;
   const openaiList = selected.size ? openai.filter(m => selected.has(m)) : openai;
 
-  const runGroup = async (label, list, fn) => {
+  const runGroup = async (label, list, fn, maxConcurrency = 3) => {
     if (!list || !list.length) return;
     const sep = document.createElement('div'); sep.className = 'result-separator'; sep.textContent = label;
     els.results.appendChild(sep);
-    for (const model of list) {
-      const card = addResultCardPending(model);
+    
+    // Create pending cards for all models
+    const tasks = list.map(model => ({
+      model,
+      card: addResultCardPending(model)
+    }));
+    
+    // Process with concurrency limit
+    const runTask = async (task) => {
       try {
-        const out = await fn(model, els.from.value, els.to.value, text, (partial) => updateResultCard(card, partial));
-        updateResultCard(card, out);
-      } catch (e) { updateResultCard(card, `Error: ${e.message}`); }
+        const out = await fn(task.model, els.from.value, els.to.value, text, (partial) => updateResultCard(task.card, partial));
+        updateResultCard(task.card, out);
+      } catch (e) {
+        updateResultCard(task.card, `Error: ${e.message}`);
+      }
+    };
+    
+    // Process tasks with limited concurrency
+    const executing = [];
+    for (const task of tasks) {
+      const promise = runTask(task).then(() => {
+        executing.splice(executing.indexOf(promise), 1);
+      });
+      executing.push(promise);
+      
+      if (executing.length >= maxConcurrency) {
+        await Promise.race(executing);
+      }
     }
+    
+    // Wait for remaining tasks
+    await Promise.all(executing);
   };
 
-  await runGroup('Ollama', ollamaList, translateOnceOllama);
-  await runGroup('OpenAI-compatible', openaiList, translateOnceOpenAI);
+  await runGroup('Ollama', ollamaList, translateOnceOllama, 3);
+  await runGroup('OpenAI-compatible', openaiList, translateOnceOpenAI, 3);
 
   els.translateBtn.disabled = false;
 }
@@ -392,6 +531,7 @@ els.modelsDone.addEventListener("click", () => {
   setSelectedModels(picked);
   closeModels();
   updateModelButtonText();
+  updateInputLimit();
 });
 els.refreshModels.addEventListener("click", refreshModelsList);
 
@@ -415,10 +555,15 @@ if (els.modelsFilter) {
 els.translateBtn.addEventListener("click", performTranslate);
 
 // init
-(() => {
+(async () => {
   if (!localStorage.getItem('ollama_base_url')) localStorage.setItem('ollama_base_url', OLLAMA_DEFAULT_BASE_URL);
   if (!localStorage.getItem('openai_base_url')) localStorage.setItem('openai_base_url', OPENAI_DEFAULT_BASE_URL);
   updateModelButtonText();
+  // Load model info cache on startup
+  try {
+    await listAllModels();
+    updateInputLimit();
+  } catch {}
 })();
 
 // Clipboard helper
