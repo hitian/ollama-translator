@@ -170,6 +170,11 @@ async function openModels() {
 }
 function closeModels() { els.modelsModal.classList.add("hidden"); modalState = null; }
 
+function updateModelButtonText() {
+  const count = getSelectedModels().length;
+  els.modelBtn.textContent = count > 0 ? `Models (${count})` : 'Models';
+}
+
 async function refreshModelsList() {
   try {
     const all = await listAllModels();
@@ -386,8 +391,17 @@ els.modelsDone.addEventListener("click", () => {
   const picked = collectModelsFromModal();
   setSelectedModels(picked);
   closeModels();
+  updateModelButtonText();
 });
 els.refreshModels.addEventListener("click", refreshModelsList);
+
+// Close modals when clicking outside
+els.modelsModal.addEventListener("click", (e) => {
+  if (e.target === els.modelsModal) closeModels();
+});
+els.settingsModal.addEventListener("click", (e) => {
+  if (e.target === els.settingsModal) closeSettings();
+});
 
 if (els.modelsFilter) {
   els.modelsFilter.addEventListener('input', (e) => {
@@ -404,6 +418,7 @@ els.translateBtn.addEventListener("click", performTranslate);
 (() => {
   if (!localStorage.getItem('ollama_base_url')) localStorage.setItem('ollama_base_url', OLLAMA_DEFAULT_BASE_URL);
   if (!localStorage.getItem('openai_base_url')) localStorage.setItem('openai_base_url', OPENAI_DEFAULT_BASE_URL);
+  updateModelButtonText();
 })();
 
 // Clipboard helper
